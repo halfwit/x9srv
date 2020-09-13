@@ -1,7 +1,7 @@
 # x9srv
 
 
-***This is a work in progress ***
+__*THIS IS A WORK IN PROGRESS *__
 
 x9srv emulates srv and rvtls from 9front, on POSIX systems.
 
