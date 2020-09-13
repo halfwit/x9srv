@@ -1,5 +1,8 @@
 # x9srv
 
+
+***This is a work in progress ***
+
 x9srv emulates srv and rvtls from 9front, on POSIX systems.
 
 The cputype will be set to $unix
