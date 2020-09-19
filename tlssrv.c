@@ -1,8 +1,7 @@
 #include <u.h>
 #include <libc.h>
-#import "fs.c"
-/* masquerade as just a TLS listener but we handle all file calls internally */
+#include "fs.c"
 
-
-/* File servers we need that we don't get */
-//procfs
+/* Wrap 0/1/2 with our tls connection */
+/* Then call srv */
+/* Flag to also listen for devdraw */
