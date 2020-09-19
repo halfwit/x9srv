@@ -1,15 +1,25 @@
 #define _FILE_OFFSET_BITS 64
-#include <stdio.h>
-#include <stdarg.h>
 #include <dirent.h>
-#include <pwd.h>
-#include <grp.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
+#include <inttypes.h>
+#include <pwd.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <unistd.h>
 #include "c9/c9.h"
 
 #define max(a,b) ((a)>(b)?(a):(b))
 #define used(x) ((void)(x))
+#define nelem(x) (int)(sizeof(x)/sizeof((x)[0]))
 
 uint32_t crc32(const void *data, int len);
 
@@ -212,7 +222,7 @@ stat2qid(struct stat *st, C9qid *qid, uint32_t *iounit)
 	int fmt;
 
 	qid->path = st->st_ino;
-	qid->version = crc32(&st->st_ctim, sizeof(st->st_ctime));
+	//qid->version = crc32(&st->st_ctim, sizeof(st->st_ctime));
 	qid->type = C9qtfile;
 	fmt = st->st_mode & S_IFMT;
 	if (fmt == S_IFDIR)

@@ -11,7 +11,7 @@ DEVDRAWOBJ=\
     $PLAN9/src/cmd/devdraw/mouseswap.$O\
     $PLAN9/src/cmd/devdraw/winsize.$O
 
-SRVOBJ = bind.$O ctl.$O s.$O mount.$O notes.$O
+SRVOBJ = bind.$O ctl.$O fs.$O mount.$O notes.$O
 
 HFILES=\
     fs.h\
