@@ -1,5 +1,7 @@
 # x9srv
 
+__*THIS IS A WORK IN PROGRESS *__
+
 x9srv emulates srv and tlssrv from 9front, on POSIX systems.
 The cputype will be set to $unix
 
