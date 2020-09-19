@@ -107,7 +107,7 @@ trace(const char *fmt, ...)
 		return;
 
 	va_start(ap, fmt);
-	vfprintf(2, fmt, ap);
+	vfprintf(stderr, fmt, ap);
 	va_end(ap);
 }
 
@@ -252,7 +252,7 @@ newfid(C9fid fid, char *path, char **err)
 	else
 		f->name++;
 	if (f->name[0] == 0)
-		fprintf(2, "%s -> empty file name\n", f->path);
+		fprintf(stderr, "%s -> empty file name\n", f->path);
 
 	for (i = 0; i < numfids; i++) {
 		if (fids[i] == NULL) {
@@ -601,8 +601,8 @@ ctxerror(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	vfprintf(2, fmt, ap);
-	fprintf(2, "\n");
+	vfprintf(stderr,  fmt, ap);
+	fprintf(stderr,  "\n");
 	va_end(ap);
 }
 
@@ -828,7 +828,7 @@ ctxt(C9ctx *c, C9t *t)
 		if (s9do(s9error(c, t->tag, err), &err2) == 0)
 			trace("<- Rerror tag=%d \"%s\"\n", t->tag, err);
 		else
-			fprintf(2, "s9error: %s\n", err2);
+			fprintf(stderr,  "s9error: %s\n", err2);
 	}
 }
 
@@ -845,22 +845,22 @@ sigdebug(int s)
 		if (f == NULL)
 			continue;
 
-		fprintf(2, "fid %u ", f->fid);
+		fprintf(stderr,  "fid %u ", f->fid);
 
 		if (f->dir != NULL)
-			fprintf(2, "open mode=dir ");
+			fprintf(stderr,  "open mode=dir ");
 		else if (f->fd >= 0)
-			fprintf(2, "open mode=%s%s%s ", modes[(f->mode & 0xf)], (f->mode & C9trunc) ? ",trunc" : "", (f->mode & C9rclose) ? ",rclose" : "");
+			fprintf(stderr,  "open mode=%s%s%s ", modes[(f->mode & 0xf)], (f->mode & C9trunc) ? ",trunc" : "", (f->mode & C9rclose) ? ",rclose" : "");
 
-		fprintf(2, "qid=[path=%"PRIu64" type=0x%02x version=%"PRIu32"] iounit=%d ", f->qid.path, f->qid.type, f->qid.version, f->iounit);
-		fprintf(2, " %s %s\n", f->path, f->name);
+		fprintf(stderr,  "qid=[path=%"PRIu64" type=0x%02x version=%"PRIu32"] iounit=%d ", f->qid.path, f->qid.type, f->qid.version, f->iounit);
+		fprintf(stderr,  " %s %s\n", f->path, f->name);
 		n++;
 	}
 
-	fprintf(2, "fids\t%d\n", n);
-	fprintf(2, "tags\t%d\n", numtags);
-	fprintf(2, "uids\t%d\n", numuids);
-	fprintf(2, "gids\t%d\n", numgids);
+	fprintf(stderr,  "fids\t%d\n", n);
+	fprintf(stderr,  "tags\t%d\n", numtags);
+	fprintf(stderr,  "uids\t%d\n", numuids);
+	fprintf(stderr,  "gids\t%d\n", numgids);
 }
 
 //int
@@ -881,7 +881,7 @@ sigdebug(int s)
 //		switch (c) {
 //		case 1:
 //			if (dir != NULL) {
-//				fprintf(2, "only one dir can be specified\n");
+//				fprintf(stderr,  "only one dir can be specified\n");
 //				return 1;
 //			}
 //			dir = ps.optarg;
@@ -893,22 +893,22 @@ sigdebug(int s)
 //			debug++;
 //			break;
 //		case 'h':
-//			fprintf(2, "usage: 9pex [-e] [-d] DIR\n");
+//			fprintf(stderr,  "usage: 9pex [-e] [-d] DIR\n");
 //			return 0;
 //			break;
 //		case '?':
-//			fprintf(2, "unknown option -%c\n", ps.optopt);
+//			fprintf(stderr,  "unknown option -%c\n", ps.optopt);
 //			return 1;
 //			break;
 //		default:
-//			fprintf(2, "unhandled option -%c\n", c);
+//			fprintf(stderr,  "unhandled option -%c\n", c);
 //			return 1;
 //			break;
 //		}
 //	}
 //
 //	if (dir == NULL) {
-//		fprintf(2, "no dir specified\n");
+//		fprintf(stderr,  "no dir specified\n");
 //		return 1;
 //	}
 //

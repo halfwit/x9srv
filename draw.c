@@ -37,7 +37,7 @@ threadmain(int argc, char **argv)
 
 	client0 = mallocz(sizeof(Client), 1);
 	if(client0 == nil){
-		fprint(2, "initdraw: allocating client0: out of memory");
+		fprint(stderr, "initdraw: allocating client0: out of memory");
 		abort();
 	}
 	client0->displaydpi = 100;
@@ -89,16 +89,16 @@ serveproc(void *v)
 		memmove(mbuf, buf, 4);
 		nn = readn(c->rfd, mbuf+4, n-4);
 		if(nn != n-4) {
-			fprint(2, "serveproc: eof during message\n");
+			fprint(stderr, "serveproc: eof during message\n");
 			break;
 		}
 
 		/* pick off messages one by one */
 		if(convM2W(mbuf, nn+4, &m) <= 0) {
-			fprint(2, "serveproc: cannot convert message\n");
+			fprint(stderr, "serveproc: cannot convert message\n");
 			break;
 		}
-		if(trace) fprint(2, "%ud [%d] <- %W\n", nsec()/1000000, threadid(), &m);
+		if(trace) fprint(stderr, "%ud [%d] <- %W\n", nsec()/1000000, threadid(), &m);
 		runmsg(c, &m);
 	}
 
@@ -264,7 +264,7 @@ replymsg(Client *c, Wsysmsg *m)
 	if(m->type%2 == 0)
 		m->type++;
 
-	if(trace) fprint(2, "%ud [%d] -> %W\n", nsec()/1000000, threadid(), m);
+	if(trace) fprint(stderr, "%ud [%d] -> %W\n", nsec()/1000000, threadid(), m);
 	/* copy to output buffer */
 	n = sizeW2M(m);
 
@@ -278,7 +278,7 @@ replymsg(Client *c, Wsysmsg *m)
 	}
 	convW2M(m, c->mbuf, n);
 	if(write(c->wfd, c->mbuf, n) != n)
-		fprint(2, "client write: %r\n");
+		fprint(stderr, "client write: %r\n");
 	qunlock(&c->wfdlk);
 }
 
@@ -312,7 +312,7 @@ matchmouse(Client *c)
 	Wsysmsg m;
 
 	if(canqlock(&c->eventlk)) {
-		fprint(2, "misuse of matchmouse\n");
+		fprint(stderr, "misuse of matchmouse\n");
 		abort();
 	}
 
@@ -326,7 +326,7 @@ matchmouse(Client *c)
 		c->mouse.resized = 0;
 		/*
 		if(m.resized)
-			fprint(2, "sending resize\n");
+			fprint(stderr, "sending resize\n");
 		*/
 		c->mouse.ri++;
 		if(c->mouse.ri == nelem(c->mouse.m))
@@ -400,7 +400,7 @@ static void
 kputc(Client *c, int ch)
 {
 	if(canqlock(&c->eventlk)) {
-		fprint(2, "misuse of kputc\n");
+		fprint(stderr, "misuse of kputc\n");
 		abort();
 	}
 
