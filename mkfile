@@ -4,28 +4,31 @@ TARG=\
     x9srv\
     x9tlssrv
 
-DEVDRAWOBJ=\
-    draw.$O\
-    $PLAN9/src/cmd/devdraw/devdraw.$O\
-    $PLAN9/src/cmd/devdraw/latin1.$O\
-    $PLAN9/src/cmd/devdraw/mouseswap.$O\
-    $PLAN9/src/cmd/devdraw/winsize.$O
+LIBDRAW=libdraw/libdraw.$O.a
+LIBC9=libc9/libc9.$O.a
+LIB=$LIBDRAW $LIBC9
 
-
-HFILES=\
-    fs.h\
-    $PLAN9/include/draw.h\
-    $PLAN9/src/cmd/devdraw/bigarrow.h\
-    $PLAN9/src/cmd/devdraw/glendapng.h\
-    $PLAN9/src/cmd/devdraw/devdraw.h
+HFLAGS=\
+    libdraw/x9draw.h\
+    libc9/x9fs.h
 
 <$PLAN9/src/mkmany
 
-$O.x9srv: srv.$O fs.$O #$DEVDRAWOBJ
-    $LD -o $target $prereq
+$LIBDRAW:V:
+    cd libdraw
+    mk
 
-$O.x9tlssrv: tlssrv.$O fs.$O #$DEVDRAWOBJ
-    $LD -o $target $prereq 
+$LIBC9:V:
+    cd libc9
+    mk
 
 clean:V:
+    cd libdraw; mk clean; cd ..
+    cd libc9; mk clean; cd ..
 	rm -f *.[$OS] [$OS].out $TARG
+
+$O.x9srv: srv.$O $LIB
+    $LD -o $target $prereq
+
+$O.x9tlssrv: tlssrv.$O $LIB
+    $LD -o $target $prereq 

@@ -1,0 +1,11 @@
+<$PLAN9/src/mkhdr
+
+LIB=libdraw.$O.a
+
+OFILES=\
+    fcall.$O\
+
+<$PLAN9/src/mklib
+
+clean:V:
+    rm -f *.[$OS] $LIB

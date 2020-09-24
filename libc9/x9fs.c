@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include "c9/c9.h"
+#include "c9.h"
 
 #define max(a,b) ((a)>(b)?(a):(b))
 #define used(x) ((void)(x))
@@ -222,7 +222,7 @@ stat2qid(struct stat *st, C9qid *qid, uint32_t *iounit)
 	int fmt;
 
 	qid->path = st->st_ino;
-	//qid->version = crc32(&st->st_ctim, sizeof(st->st_ctime));
+	qid->version = crc32(&st->st_ctimespec, sizeof(st->st_ctime));
 	qid->type = C9qtfile;
 	fmt = st->st_mode & S_IFMT;
 	if (fmt == S_IFDIR)
@@ -873,148 +873,117 @@ sigdebug(int s)
 	fprintf(stderr,  "gids\t%d\n", numgids);
 }
 
-//int
-//main(int argc, char **argv)
-//{
-//	const char *dir;
-//	char *err;
-//	Fid *f;
-//	struct parg_state ps;
-//	struct sigaction sa;
-//	int can, i, c, rdonly, block;
-//
-//	parg_init(&ps);
-//
-//	debug = 0;
-//	dir = NULL;
-//	while ((c = parg_getopt(&ps, argc, argv, "deh")) >= 0) {
-//		switch (c) {
-//		case 1:
-//			if (dir != NULL) {
-//				fprintf(stderr,  "only one dir can be specified\n");
-//				return 1;
-//			}
-//			dir = ps.optarg;
-//			break;
-//		case 'e':
-//			rootescape++;
-//			break;
-//		case 'd':
-//			debug++;
-//			break;
-//		case 'h':
-//			fprintf(stderr,  "usage: 9pex [-e] [-d] DIR\n");
-//			return 0;
-//			break;
-//		case '?':
-//			fprintf(stderr,  "unknown option -%c\n", ps.optopt);
-//			return 1;
-//			break;
-//		default:
-//			fprintf(stderr,  "unhandled option -%c\n", c);
-//			return 1;
-//			break;
-//		}
-//	}
-//
-//	if (dir == NULL) {
-//		fprintf(stderr,  "no dir specified\n");
-//		return 1;
-//	}
-//
-//	if ((rootpath = realpath(dir, NULL)) == NULL) {
-//		trace("%s: %s\n", dir, strerror(errno));
-//		return 1;
-//	}
-//	rootlen = strlen(rootpath);
-//
-//	in = 0;
-//	out = 1;
-//	eof = 0;
-//	fids = NULL;
-//	numfids = 0;
-//	tags = NULL;
-//	numtags = 0;
-//	uids = NULL;
-//	numuids = 0;
-//	gids = NULL;
-//	numgids = 0;
-//
-//	memset(&ctx, 0, sizeof(ctx));
-//	ctx.msize = 64*1024;
-//	ctx.read = ctxread;
-//	ctx.begin = ctxbegin;
-//	ctx.end = ctxend;
-//	ctx.t = ctxt;
-//	ctx.error = ctxerror;
-//
-//	rdbuf = calloc(1, ctx.msize);
-//	wrbufsz = ctx.msize;
-//	wrbuf = calloc(1, wrbufsz);
-//	wroff = wrend = 0;
-//
-//	memset(&sa, 0, sizeof(sa));
-//	sa.sa_handler = SIG_IGN;
-//	sa.sa_flags = SA_RESTART;
-//	sigaction(SIGPIPE, &sa, NULL);
-//
-//	memset(&sa, 0, sizeof(sa));
-//	sa.sa_handler = sigdebug;
-//	sa.sa_flags = SA_RESTART;
-//	sigfillset(&sa.sa_mask);
-//	sigaction(SIGUSR1, &sa, NULL);
-//
-//	err = NULL;
-//	rdonly = block = 1; /* at first we wait until the client sends in data */
-//	for (; !eof;) {
-//		if ((can = canrw(rdonly, block)) < 0)
-//			break;
-//		if ((can & Canrd) != 0) { /* if there is data, process it */
-//			if (s9do(s9proc(&ctx), &err) != 0)
-//				break;
-//			/* give it a chance to receive all the data first */
-//			rdonly = 1;
-//			block = 0;
-//		} else if (block == 0) { /* got all the data */
-//			if (rdonly != 0) { /* wait until we can send OR we get more data */
-//				rdonly = 0;
-//				block = 1;
-//			}
-//		} else if (rdonly == 0 && (can & Canwr) != 0) { /* can send */
-//			if (wrsend() != 0) /* send all the data */
-//				break;
-//			rdonly = 1; /* and go back to reading */
-//			block = 1;
-//		}
-//	}
-//
-//	if (err != NULL)
-//		trace("s9proc: %s\n", err);
-//
-//	for (i = 0; i < numfids; i++) {
-//		if ((f = fids[i]) != NULL) {
-//			if (f->dir != NULL)
-//				closedir(f->dir);
-//			else if (f->fd >= 0)
-//				close(f->fd);
-//			free(f->path);
-//			free(f);
-//		}
-//	}
-//
-//	for (i = 0; i < numuids; i++)
-//		free(uids[i].name);
-//	free(uids);
-//	for (i = 0; i < numgids; i++)
-//		free(gids[i].name);
-//	free(gids);
-//
-//	memset(wrbuf, 0, ctx.msize);
-//	free(wrbuf);
-//	memset(rdbuf, 0, ctx.msize);
-//	free(rdbuf);
-//	free(fids);
-//	free(rootpath);
-//
-//	return 0;
-//}
+int
+fs_main(char *dir)
+{
+	char *err;
+	Fid *f;
+
+	struct sigaction sa;
+	int can, i, rdonly, block;
+
+/* FLAGS */
+	debug = 1;
+
+
+	if (dir == NULL) {
+		fprintf(stderr,  "no dir specified\n");
+		return 1;
+	}
+
+	if ((rootpath = realpath(dir, NULL)) == NULL) {
+		trace("%s: %s\n", dir, strerror(errno));
+		return 1;
+	}
+	rootlen = strlen(rootpath);
+
+	in = 0;
+	out = 1;
+	eof = 0;
+	fids = NULL;
+	numfids = 0;
+	tags = NULL;
+	numtags = 0;
+	uids = NULL;
+	numuids = 0;
+	gids = NULL;
+	numgids = 0;
+
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.msize = 64*1024;
+	ctx.read = ctxread;
+	ctx.begin = ctxbegin;
+	ctx.end = ctxend;
+	ctx.t = ctxt;
+	ctx.error = ctxerror;
+
+	rdbuf = calloc(1, ctx.msize);
+	wrbufsz = ctx.msize;
+	wrbuf = calloc(1, wrbufsz);
+	wroff = wrend = 0;
+
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = SIG_IGN;
+	sa.sa_flags = SA_RESTART;
+	sigaction(SIGPIPE, &sa, NULL);
+
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = sigdebug;
+	sa.sa_flags = SA_RESTART;
+	sigfillset(&sa.sa_mask);
+	sigaction(SIGUSR1, &sa, NULL);
+
+	err = NULL;
+	rdonly = block = 1; /* at first we wait until the client sends in data */
+	for (; !eof;) {
+		if ((can = canrw(rdonly, block)) < 0)
+			break;
+		if ((can & Canrd) != 0) { /* if there is data, process it */
+			if (s9do(s9proc(&ctx), &err) != 0)
+				break;
+			/* give it a chance to receive all the data first */
+			rdonly = 1;
+			block = 0;
+		} else if (block == 0) { /* got all the data */
+			if (rdonly != 0) { /* wait until we can send OR we get more data */
+				rdonly = 0;
+				block = 1;
+			}
+		} else if (rdonly == 0 && (can & Canwr) != 0) { /* can send */
+			if (wrsend() != 0) /* send all the data */
+				break;
+			rdonly = 1; /* and go back to reading */
+			block = 1;
+		}
+	}
+
+	if (err != NULL)
+		trace("s9proc: %s\n", err);
+
+	for (i = 0; i < numfids; i++) {
+		if ((f = fids[i]) != NULL) {
+			if (f->dir != NULL)
+				closedir(f->dir);
+			else if (f->fd >= 0)
+				close(f->fd);
+			free(f->path);
+			free(f);
+		}
+	}
+
+	for (i = 0; i < numuids; i++)
+		free(uids[i].name);
+	free(uids);
+	for (i = 0; i < numgids; i++)
+		free(gids[i].name);
+	free(gids);
+
+	memset(wrbuf, 0, ctx.msize);
+	free(wrbuf);
+	memset(rdbuf, 0, ctx.msize);
+	free(rdbuf);
+	free(fids);
+	free(rootpath);
+
+	return 0;
+}
