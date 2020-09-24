@@ -11,7 +11,6 @@ DEVDRAWOBJ=\
     $PLAN9/src/cmd/devdraw/mouseswap.$O\
     $PLAN9/src/cmd/devdraw/winsize.$O
 
-SRVOBJ = bind.$O ctl.$O fs.$O mount.$O notes.$O
 
 HFILES=\
     fs.h\
@@ -22,10 +21,10 @@ HFILES=\
 
 <$PLAN9/src/mkmany
 
-$O.x9srv: srv.$O $SRVOBJ #$DEVDRAWOBJ
+$O.x9srv: srv.$O fs.$O #$DEVDRAWOBJ
     $LD -o $target $prereq
 
-$O.x9tlssrv: tlssrv.$O $SRVOBJ #$DEVDRAWOBJ
+$O.x9tlssrv: tlssrv.$O fs.$O #$DEVDRAWOBJ
     $LD -o $target $prereq 
 
 clean:V:
