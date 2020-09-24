@@ -3,7 +3,11 @@
 LIB=libdraw.$O.a
 
 OFILES=\
-    fcall.$O\
+    x9draw.$O\
+    srv.$O\
+    devdraw.$O\
+    mouseswap.$O\
+    winsize.$O
 
 <$PLAN9/src/mklib
 
