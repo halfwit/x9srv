@@ -12,6 +12,7 @@
 #include <mouse.h>
 #include <cursor.h>
 #include <drawfcall.h>
+#include <stdio.h> /* stderr, stdin, stdout */
 #include "devdraw.h"
 
 static void runmsg(Client*, Wsysmsg*);
@@ -28,36 +29,35 @@ static int afd;
 static char adir[40];
 
 
-/* TODO: This goes away into srv/tlssrv, naturally */
-void
-threadmain(int argc, char **argv)
-{
-
-	fmtinstall('H', encodefmt);
-
-	client0 = mallocz(sizeof(Client), 1);
-	if(client0 == nil){
-		fprint(stderr, "initdraw: allocating client0: out of memory");
-		abort();
-	}
-	client0->displaydpi = 100;
-	client0->rfd = 3;
-	client0->wfd = 4;
-
-	/*
-	 * Move the protocol off stdin/stdout so that
-	 * any inadvertent prints don't screw things up.
-	 */
-	dup(0,3);
-	dup(1,4);
-	close(0);
-	close(1);
-	open("/dev/null", OREAD);
-	open("/dev/null", OWRITE);
-
-	fmtinstall('W', drawfcallfmt);
-	gfx_main();
-}
+//void
+//threadmain(int argc, char **argv)
+//{
+//
+//	fmtinstall('H', encodefmt);
+//
+//	client0 = mallocz(sizeof(Client), 1);
+//	if(client0 == nil){
+//		fprint(stderr, "initdraw: allocating client0: out of memory");
+//		abort();
+//	}
+//	client0->displaydpi = 100;
+//	client0->rfd = 3;
+//	client0->wfd = 4;
+//
+//	/*
+//	 * Move the protocol off stdin/stdout so that
+//	 * any inadvertent prints don't screw things up.
+//	 */
+//	dup(0,3);
+//	dup(1,4);
+//	close(0);
+//	close(1);
+//	open("/dev/null", OREAD);
+//	open("/dev/null", OWRITE);
+//
+//	fmtinstall('W', drawfcallfmt);
+//	gfx_main();
+//}
 
 void
 gfx_started(void)
