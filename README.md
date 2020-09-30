@@ -2,7 +2,8 @@
 
 * __*THIS IS A WORK IN PROGRESS *__
 
-x9srv provides authsrv, tlssrv, cpu and exportfs, suitable for interacting with 9front
+x9srv provides authsrv, tlssrv, cpu and exportfs, suitable for interacting with 9front.
+
 libmp, libsec, libauthsrv are adapted from 9front and Aiju's code in [jsdrawterm](https://github.com/aiju/jsdrawterm)
 
 ## Building
