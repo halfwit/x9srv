@@ -73,6 +73,7 @@ OFILES=\
 	sha2block64.$O\
 	smallprimes.$O\
 	tlshand.$O\
+	thumb.$O\
 	tsmemcmp.$O\
 	x509.$O\
 	p_sha256.$O

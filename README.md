@@ -3,8 +3,7 @@
 * __*THIS IS A WORK IN PROGRESS *__
 
 x9srv provides authsrv, tlssrv, cpu and exportfs, suitable for interacting with 9front
-
-* Currently, the binaries only act in server mode.
+libmp, libsec, libauthsrv are adapted from 9front and Aiju's code in [jsdrawterm](https://github.com/aiju/jsdrawterm)
 
 ## Building
 
@@ -19,7 +18,21 @@ mk all && mk install
 Adapted from [mjl-/authsrv9](https://github.com/mjl-/authsrv9), with the addition of dp9ik support
 Consult [mjl-'s guide](https://www.ueber.net/who/mjl/plan9/plan9-obsd.html) for setup details.
 
+### cpu
+
+See [cpu(1)](http://man.cat-v.org/9front/1/cpu)
+
+### exportfs
+
+See [exportfs(4)](http://man.cat-v.org/9front/4/exportfs)
+
+### tlssrv, tlsclient
+
+See [tlssrv(8)](http://man.cat-v.org/9front/8/tlssrv)
+
 ## Usage
+
+* Currently, the binaries only act in server mode.
 
 Add entries to your [inetd](https://www.freebsd.org/doc/handbook/network-inetd.html) as required, such as
 

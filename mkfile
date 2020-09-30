@@ -4,7 +4,8 @@ TARG=\
     #authsrv\
     cpu\
     exportfs\
-    tlssrv
+    #tlssrv\
+    tlsclient
 
 LIBMP=libmp/libmp.$O.a
 LIBAUTHSRV=libauthsrv/libauthsrv.$O.a
@@ -52,4 +53,7 @@ $O.exportfs: exportfs.$O $LIBC9
     $LD -o $target $prereq
 
 $O.tlssrv: tlssrv.$O $LIBMP $LIBSEC
+    $LD -o $target $prereq
+
+$O.tlsclient: tlsclient.$O $LIBMP $LIBSEC
     $LD -o $target $prereq
