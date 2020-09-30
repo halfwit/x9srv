@@ -1,5 +1,6 @@
 #include <u.h>
 #include <libc.h>
+#include <thread.h>
 #include <auth.h>
 #include "include/mp.h"
 #include "include/libsec.h"
@@ -12,7 +13,7 @@ void
 usage(void)
 {
 	fprint(2, "usage: tlsclient [-D] [-a [-k keyspec] ] [-c clientcert.pem] [-d servercert] [-t /sys/lib/tls/xxx] [-x /sys/lib/tls/xxx.exclude] [-n servername] [-o] dialstring [cmd [args...]]\n");
-	exits("usage");
+	threadexitsall("usage");
 }
 
 void
@@ -41,7 +42,7 @@ reporter(char *fmt, ...)
 }
 
 void
-main(int argc, char **argv)
+threadmain(int argc, char **argv)
 {
 	int fd, dfd;
 	char *addr;
@@ -168,5 +169,5 @@ main(int argc, char **argv)
 		break;
 	}
 	postnote(PNGROUP, getpid(), "git on ou'hurr");
-	exits(0);
+	threadexitsall(0);
 }

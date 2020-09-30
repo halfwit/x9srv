@@ -1,6 +1,7 @@
 #include <u.h>
 #include <libc.h>
 #include <bio.h>
+#include <thread.h>
 #include <auth.h>
 #include "include/mp.h"
 #include "include/libsec.h"
@@ -33,11 +34,11 @@ void
 usage(void)
 {
 	fprint(2, "usage: tlssrv [-D] -[aA] [-k keyspec]] [-c cert] [-l logfile] [-r remotesys] cmd [args...]\n");
-	exits("usage");
+	threadexitsall("usage");
 }
 
 void
-main(int argc, char *argv[])
+threadmain(int argc, char *argv[])
 {
 	TLSconn *conn;
 	char *cert;
@@ -77,7 +78,7 @@ main(int argc, char *argv[])
 	if(conn == nil)
 		sysfatal("out of memory");
 
-
+	/*
 	if(auth){
 		AuthInfo *ai;
 
@@ -93,6 +94,7 @@ main(int argc, char *argv[])
 		conn->psk = ai->secret;
 		conn->psklen = ai->nsecret;
 	}
+	*/
 	if(cert){
 		conn->chain = readcertchain(cert);
 		if(conn->chain == nil)
@@ -111,7 +113,7 @@ main(int argc, char *argv[])
 	fd = tlsServer(0, conn);
 	if(fd < 0){
 		reporter("failed: %r");
-		exits(0);
+		threadexitsall(0);
 	}
 	if(debug)
 		reporter("open");
@@ -124,5 +126,5 @@ main(int argc, char *argv[])
 	/* We want to fork here, and filter I/O; designing the bind mounts as needed */
 	exec(*argv, argv);
 	reporter("can't exec %s: %r", *argv);
-	exits("exec");
+	threadexitsall("exec");
 }

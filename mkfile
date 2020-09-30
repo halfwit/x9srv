@@ -4,7 +4,7 @@ TARG=\
     #authsrv\
     cpu\
     exportfs\
-    #tlssrv\
+    tlssrv\
     tlsclient
 
 LIBMP=libmp/libmp.$O.a
@@ -24,7 +24,7 @@ $LIBC9:V:
     cd libc9
     mk
 
-$LIBAUTHSRV:V: $LIBMP
+$LIBAUTHSRV:V:
     cd libauthsrv
     mk
 
@@ -43,7 +43,7 @@ clean:V:
     cd libc9; mk clean; cd ..
 	rm -f *.[$OS] [$OS].out $TARG
 
-$O.authsrv: authsrv.$O  $LIBSEC $LIBAUTHSRV
+$O.authsrv: authsrv.$O $LIBMP $LIBSEC $LIBAUTHSRV
     $LD -o $target $prereq
 
 $O.cpu: cpu.$O $LIBC9
