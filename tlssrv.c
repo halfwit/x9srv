@@ -78,23 +78,23 @@ threadmain(int argc, char *argv[])
 	if(conn == nil)
 		sysfatal("out of memory");
 
-	/*
+	
 	if(auth){
 		AuthInfo *ai;
 
 		ai = auth_proxy(0, nil, "proto=p9any role=server %s", keyspec);
 		if(ai == nil)
 			sysfatal("auth_proxy: %r");
-
+		/*
 		if(auth == 1)
 		if(auth_chuid(ai, "/lib/namespace") < 0)
 			sysfatal("auth_chuid: %r");
-
+		*/
 		conn->pskID = "p9secret";
 		conn->psk = ai->secret;
 		conn->psklen = ai->nsecret;
 	}
-	*/
+	
 	if(cert){
 		conn->chain = readcertchain(cert);
 		if(conn->chain == nil)

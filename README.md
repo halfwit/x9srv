@@ -15,8 +15,15 @@ mk all && mk install
 
 ### authsrv
 
-Adapted from [mjl-/authsrv9](https://github.com/mjl-/authsrv9), with the addition of dp9ik support
-Consult [mjl-'s guide](https://www.ueber.net/who/mjl/plan9/plan9-obsd.html) for setup details.
+authsrv expects there to be at least the following files and directories in the chroot:
+
+* `/lib/ndb/auth`
+* `/adm/$user`
+* `/adm/$user/secret`
+* `/adm/$user/key`
+
+You can use `passtokey` from [authsrv9](https://github.com/mjl-/authsrv9) to generate keys, following the guide at https://www.ueber.net/who/mjl/plan9/plan9-obsd.html
+This is an incomplete version of authsrv, but should suffice for simple file shares and sessions.
 
 ### cpu
 

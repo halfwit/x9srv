@@ -1,7 +1,7 @@
 <$PLAN9/src/mkhdr
 
 TARG=\
-    #authsrv\
+    authsrv\
     #cpu\
     exportfs\
     tlssrv\

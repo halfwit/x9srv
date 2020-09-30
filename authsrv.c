@@ -1,615 +1,533 @@
-#include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <syslog.h>
-#include <time.h>
-#include <unistd.h>
+/* Rework with libauthsrv + libsec */
+#include <u.h>
+#include <libc.h>
+#include <thread.h>
+#include <bio.h>
+#include <ndb.h>
+#include "include/libsec.h"
+#include "include/authsrv.h"
 
-int dflag = 0;
-
-#define errstr (strerror(errno))
-static void sysfatal(char *fmt, ...);
-static void say(char *fmt, ...);
-static void warn(char *fmt, ...);
+#define AUTHLOG "auth"
+#define KEYDB   "/adm"
 
 enum {
-	ANamelen =	28,
-	ADomlen =	48,
-	AErrlen =	64,
-	Challen =	8,
-	Secretlen =	32,
-
-	Ticketreqlen =	1+ANamelen+ADomlen+Challen+ANamelen+ANamelen,
-	Ticketlen =	1+Challen+2*ANamelen+Deskeylen,
-	Passreqlen =	1+2*ANamelen+1+Secretlen,
-
-	ATreq =		1,
-	APass =		3,
-	AOk =		4,
-	AErr =		5,
-
-	ATs =		64,
-	ATc =		65,
-	ATp =		68,
+	Maxpath = 256,
 };
 
-typedef struct User User;
-struct User
+Ndb *db;
+typedef struct Keyslot Keyslot;
+struct Keyslot
 {
-	int	keyok;
-	uchar	key[Deskeylen];
-	int	status;
-	int	expire;
+	Authkey ak;
+	char	id[ANAMELEN];
 };
+Keyslot hkey, akey, ukey;
 
-typedef struct Ticketreq Ticketreq;
-typedef struct Ticket Ticket;
-typedef struct Passreq Passreq;
-struct Ticketreq
+uchar keyseed[SHA2_256dlen];
+uchar zeros[32];
+char raddr[128];
+char ticketform;
+
+/* auth functions */
+void	pak(Ticketreq*);
+void	ticketrequest(Ticketreq*);
+void	changepasswd(Ticketreq*);
+
+/* util functions */
+void	mkkey(char*, Authkey*);
+void	mkticket(Ticketreq*, Ticket*);
+char*	okpasswd(char*);
+void	replyerror(char*, ...);
+void	safecpy(char*, char*, int);
+
+/* readwrite */
+int	findkey1(char*, char*, Authkey*);
+int	readfile(char*, char*, int);
+int	setkey1(char*, char*, Authkey*);
+char*	setdeskey(char*, char*, char*);
+uchar*	setaeskey(char*, char*, uchar*);
+char*	setsecret1(char*, char*, char*);
+int	writefile(char*, char*, int);
+
+int		speaksfor(char*, char*);
+
+void
+threadmain(int argc, char *argv[])
 {
-	char	which;
-	char	authid[ANamelen+1];
-	char	authdom[ADomlen+1];
-	uchar	chal[Challen];
-	char	hostid[ANamelen+1];
-	char	uid[ANamelen+1];
-};
+	char buf[TICKREQLEN];
+	Ticketreq tr;
+	int n;
 
-struct Ticket
-{
-	uchar	which;
-	uchar	chal[Challen];
-	char	cuid[ANamelen+1];
-	char	suid[ANamelen+1];
-	uchar	key[Deskeylen];
-};
+	srandom(time(NULL));
 
-struct Passreq
-{
-	int	which;
-	char	oldpw[ANamelen+1];
-	char	newpw[ANamelen+1];
-	int	changesecret;
-	char	secret[Secretlen+1];
-};
+	db = ndbopen("/lib/ndb/auth");
+	if(db == 0)
+		syslog(0, AUTHLOG, "no /lib/ndb/auth");
 
-static void transact(void);
+	for(;;){
+		n = readn(0, buf, sizeof(buf));
+		if(n <= 0 || convM2TR(buf, n, &tr) <= 0)
+			threadexitsall(0);
+		switch(tr.type){
+		case AuthTreq:
+			ticketrequest(&tr);
+			break;
+		case AuthPass:
+			changepasswd(&tr);
+			break;
+		case AuthPAK:
+			pak(&tr);
+			continue;
+		default:
+			syslog(0, AUTHLOG, "unknown ticket request type: %d", tr.type);
+			threadexitsall(0);
+		}
+		/* invalidate pak keys */
+		akey.id[0] = 0;
+		hkey.id[0] = 0;
+		ukey.id[0] = 0;
+	}
 
-
-static void
-usage(void)
-{
-	fprint(2, "usage: authsrv [-d]\n");
-	exit(1);
+	threadexitsall(0);
 }
+
+
+void
+pak1(char *u, Keyslot *k)
+{
+	uchar y[PAKYLEN];
+	PAKpriv p;
+
+	safecpy(k->id, u, sizeof(k->id));
+
+	if(!findkey1(KEYDB, k->id, &k->ak) || tsmemcmp(k->ak.aes, zeros, AESKEYLEN) == 0) {
+		syslog(0, AUTHLOG, "pak-fail no AES key for id %s", k->id);
+		/* make one up so caller doesn't know it was wrong */
+		mkkey(k->id, &k->ak);
+		authpak_hash(&k->ak, k->id);
+	}
+	authpak_new(&p, &k->ak, y, 0);
+	if(write(1, y, PAKYLEN) != PAKYLEN)
+		threadexitsall(0);
+	if(readn(0, y, PAKYLEN) != PAKYLEN)
+		threadexitsall(0);
+	if(authpak_finish(&p, &k->ak, y))
+		threadexitsall(0);
+}
+
+void
+pak(Ticketreq *tr)
+{
+	static uchar ok[1] = {AuthOK};
+
+	if(write(1, ok, 1) != 1)
+		threadexitsall(0);
+
+	/* invalidate pak keys */
+	akey.id[0] = 0;
+	hkey.id[0] = 0;
+	ukey.id[0] = 0;
+
+	if(tr->hostid[0]) {
+		if(tr->authid[0])
+			pak1(tr->authid, &akey);
+		pak1(tr->hostid, &hkey);
+	} else if(tr->uid[0]) {
+		pak1(tr->uid, &ukey);
+	}
+
+	ticketform = 1;
+}
+
 
 int
-main(int argc, char *argv[])
+getkey(char *u, Keyslot *k)
 {
-	int c;
+	/* empty user id is an error */
+	if(*u == 0)
+		threadexitsall(0);
 
-	randominit();
-	openlog("authsrv", 0, LOG_AUTH);
+	if(k == &hkey && strcmp(u, k->id) == 0)
+		return 1;
+	if(k == &akey && strcmp(u, k->id) == 0)
+		return 1;
+	if(k == &ukey && strcmp(u, k->id) == 0)
+		return 1;
 
-	while((c = getopt(argc, argv, "d")) != -1)
-		switch(c) {
-		case 'd':
-			dflag++;
-			break;
-		default:
-			usage();
+	if(ticketform != 0){
+		syslog(0, AUTHLOG, "need DES key for %s, but DES is disabled", u);
+		replyerror("DES is disabled");
+		threadexitsall(0);
+	}
+
+	return findkey1(KEYDB, k->id, &k->ak);
+}
+
+
+void
+ticketrequest(Ticketreq *tr)
+{
+	char tbuf[2*MAXTICKETLEN+1];
+	Ticket t;
+	int n;
+
+	if(tr->uid[0] == 0)
+		threadexitsall(0);
+	if(!getkey(tr->authid, &akey)){
+		/* make one up so caller doesn't know it was wrong */
+		mkkey(tr->authid, &akey.ak);
+		syslog(0, AUTHLOG, "tr-fail authid %s", tr->authid);
+	}
+	if(!getkey(tr->hostid, &hkey)){
+		/* make one up so caller doesn't know it was wrong */
+		mkkey(tr->hostid, &hkey.ak);
+		syslog(0, AUTHLOG, "tr-fail hostid %s(%s)", tr->hostid, raddr);
+	}
+	mkticket(tr, &t);
+	if(!speaksfor(tr->hostid, tr->uid)){
+		mkkey(tr->authid, &akey.ak);
+		mkkey(tr->hostid, &hkey.ak);
+		syslog(0, AUTHLOG, "tr-fail %s@%s(%s) -> %s@%s no speaks for",
+			tr->uid, tr->hostid, raddr, tr->uid, tr->authid);
+	}
+	n = 0;
+	tbuf[n++] = AuthOK;
+	t.num = AuthTc;
+	n += convT2M(&t, tbuf+n, sizeof(tbuf)-n, &hkey.ak);
+	t.num = AuthTs;
+	n += convT2M(&t, tbuf+n, sizeof(tbuf)-n, &akey.ak);
+	if(write(1, tbuf, n) != n)
+		threadexitsall(0);
+
+	syslog(0, AUTHLOG, "tr-ok %s@%s(%s) -> %s@%s", tr->uid, tr->hostid, raddr, tr->uid, tr->authid);
+}
+
+
+void
+changepasswd(Ticketreq *tr)
+{
+	char tbuf[MAXTICKETLEN+1], prbuf[MAXPASSREQLEN], *err;
+	Passwordreq pr;
+	Authkey nkey;
+	Ticket t;
+	int n, m;
+
+	if(!getkey(tr->uid, &ukey)){
+		/* make one up so caller doesn't know it was wrong */
+		mkkey(tr->uid, &ukey.ak);
+		syslog(0, AUTHLOG, "cp-fail uid %s@%s", tr->uid, raddr);
+	}
+
+	/* send back a ticket with a new key */
+	mkticket(tr, &t);
+	t.num = AuthTp;
+	n = 0;
+	tbuf[n++] = AuthOK;
+	n += convT2M(&t, tbuf+n, sizeof(tbuf)-n, &ukey.ak);
+	if(write(1, tbuf, n) != n)
+		threadexitsall(0);
+
+	/* loop trying passwords out */
+	for(;;){
+		for(n=0; (m = convM2PR(prbuf, n, &pr, &t)) <= 0; n += m){
+			m = -m;
+			if(m <= n || m > sizeof(prbuf))
+				threadexitsall(0);
+			m -= n;
+			if(readn(0, prbuf+n, m) != m)
+				threadexitsall(0);
 		}
-	argc -= optind;
-	argv += optind;
-	if(argc != 0)
-		usage();
+		if(pr.num != AuthPass){
+			replyerror("protocol botch1: %s", raddr);
+			threadexitsall(0);
+		}
+		passtokey(&nkey, pr.old);
+		if(tsmemcmp(ukey.ak.des, nkey.des, DESKEYLEN) != 0){
+			replyerror("protocol botch2: %s", raddr);
+			continue;
+		}
+		if(tsmemcmp(ukey.ak.aes, zeros, AESKEYLEN) != 0 && tsmemcmp(ukey.ak.aes, nkey.aes, AESKEYLEN) != 0){
+			replyerror("protocol botch3: %s", raddr);
+			continue;
+		}
+		if(*pr.new){
+			err = okpasswd(pr.new);
+			if(err){
+				replyerror("%s %s", err, raddr);
+				continue;
+			}
+			passtokey(&nkey, pr.new);
+		}
+		if(pr.changesecret && setsecret1(KEYDB, tr->uid, pr.secret) == 0){
+			replyerror("can't write secret %s", raddr);
+			continue;
+		}
+		if(*pr.new && setkey1(KEYDB, tr->uid, &nkey) == 0){
+			replyerror("can't write key %s", raddr);
+			continue;
+		}
+		memmove(ukey.ak.des, nkey.des, DESKEYLEN);
+		memmove(ukey.ak.aes, nkey.aes, AESKEYLEN);
+		break;
+	}
 
-	/* openbsd's inetd redirects stderr to stdout (the network)... */
-	close(2);
-	open("/dev/null", O_WRONLY);
-
-	alarm(2*60);
-	for(;;)
-		transact();
+	prbuf[0] = AuthOK;
+	if(write(1, prbuf, 1) != 1)
+		threadexitsall(0);
 }
 
-static void
-ewrite(uchar *p, int n)
+void
+mkkey(char *id, Authkey *a)
 {
-	if(write(1, p, n) != n)
-		sysfatal("write: %s", errstr);
-	say("wrote %d bytes", n);
+	uchar h[SHA2_256dlen];
+
+	genrandom((uchar*)a, sizeof(Authkey));
+
+	/*
+	 * the DES key has to be constant for a user in each response,
+	 * so we make one up pseudo randomly from a keyseed and user name.
+	 */
+	hmac_sha2_256((uchar*)id, strlen(id), keyseed, sizeof(keyseed), h, nil);
+	memmove(a->des, h, DESKEYLEN);
+	memset(h, 0, sizeof(h));
 }
 
-static void
-autherror(int fatal, char *err)
+void
+mkticket(Ticketreq *tr, Ticket *t)
 {
-	uchar buf[1+AErrlen];
-
-	say("autherror, fatal %d, err %s", fatal, err);
-
-	memset(buf, 0, sizeof buf);
-	buf[0] = AErr;
-	memmove(buf+1, err, min(strlen(err), AErrlen));
-	ewrite(buf, sizeof buf);
-
-	if(fatal)
-		exit(1);
+	memset(t, 0, sizeof(Ticket));
+	memmove(t->chal, tr->chal, CHALLEN);
+	safecpy(t->cuid, tr->uid, ANAMELEN);
+	safecpy(t->suid, tr->uid, ANAMELEN);
+	genrandom(t->key, NONCELEN);
+	t->form = ticketform;
 }
 
-static int
-readfile(char *path, void *buf, int buflen, int exact)
+char *trivial[] = {
+	"login",
+	"guest",
+	"change me",
+	"passwd",
+	"no passwd",
+	"anonymous",
+	0
+};
+
+char*
+okpasswd(char *p)
 {
-	int fd;
-	int n;
+	char passwd[PASSWDLEN];
+	char back[PASSWDLEN];
+	int i, n;
 
-	memset(buf, 0, buflen);
-	fd = open(path, O_RDONLY);
-	if(fd < 0)
-		return -1;
-	n = readn(fd, buf, buflen);
-	close(fd);
-	if(n < 0)
-		return -1;
-	if(!exact && n == buflen)
-		return -1;
-	if(exact && n != buflen)
-		return -1;
-	return n;
-}
+	strncpy(passwd, p, sizeof passwd - 1);
+	passwd[sizeof passwd - 1] = '\0';
+	n = strlen(passwd);
+	while(n > 0 && passwd[n - 1] == ' ')
+		n--;
+	passwd[n] = '\0';
+	for(i = 0; i < n; i++)
+		back[i] = passwd[n - 1 - i];
+	back[n] = '\0';
+	if(n < 8)
+		return "password must be at least 8 chars";
 
-static int
-writefile(char *path, uchar *buf, int buflen)
-{
-	int fd;
-	int n;
+	for(i = 0; trivial[i]; i++)
+		if(strcmp(passwd, trivial[i]) == 0
+		|| strcmp(back, trivial[i]) == 0)
+			return "trivial password";
 
-	fd = open(path, O_WRONLY|O_CREAT|O_TRUNC);
-	if(fd < 0)
-		return -1;
-	n = write(fd, buf, buflen);
-	close(fd);
-	return n;
-}
-
-static int
-getinfo(char **authid, char **authdom)
-{
-	char aid[ANamelen+1], adom[ANamelen+1];
-	int naid, nadom;
-
-	naid = readfile("/auth/authid", aid, sizeof aid-1, 0);
-	if(naid < 0)
-		return -1;
-	nadom = readfile("/auth/authdom", adom, sizeof adom-1, 0);
-	if(nadom < 0)
-		return -1;
-	aid[naid] = '\0';
-	adom[nadom] = '\0';
-	*authid = estrdup(aid);
-	*authdom = estrdup(adom);
 	return 0;
 }
 
-static void
-getuserinfo(char *uid, User *u)
+/*
+ *  return an error reply
+ */
+void
+replyerror(char *fmt, ...)
 {
-	char pre[128];
-	char path[128];
-	char buf[128];
-	User t;
-	char *e;
-	uint expire;
+	char buf[AERRLEN+1];
+	va_list arg;
 
-	snprintf(pre, sizeof pre, "/auth/users/%s", uid);
-
-	u->keyok = 0;
-	memset(u->key, 0, sizeof u->key);
-	u->status = 0;
-	u->expire = 1;
-
-	snprintf(path, sizeof path, "%s/key", pre);
-	if(readfile(path, t.key, sizeof t.key, 1) < 0)
-		return;
-
-	snprintf(path, sizeof path, "%s/status", pre);
-	if(readfile(path, buf, sizeof buf, 0) < 0)
-		return;
-	t.status = 0;
-	if(eq(buf, "ok"))
-		t.status = 1;
-	else if(!eq(buf, "disabled"))
-		warn("bad status in %s: %s", path, buf);
-
-	snprintf(path, sizeof path, "%s/expire", pre);
-	if(readfile(path, buf, sizeof buf, 0) < 0)
-		return;
-	t.expire = 1;
-	if(eq(buf, "never")) {
-		t.expire = 0;
-	} else {
-		expire = (uint)strtol(buf, &e, 10);
-		if(*e == '\0')
-			t.expire = expire;
-		else
-			warn("bad expire in %s: %s (remainder %s)", path, buf, e);
-	}
-	t.keyok = 1;
-	memmove(u, &t, sizeof t);
+	memset(buf, 0, sizeof(buf));
+	va_start(arg, fmt);
+	vseprint(buf + 1, buf + sizeof(buf), fmt, arg);
+	va_end(arg);
+	buf[AERRLEN] = 0;
+	buf[0] = AuthErr;
+	write(1, buf, AERRLEN+1);
+	syslog(0, AUTHLOG, buf+1);
 }
 
-static int
-move(void *to, void *from, int n)
+
+void
+safecpy(char *to, char *from, int len)
 {
-	memmove(to, from, n);
+	strncpy(to, from, len);
+	to[len-1] = 0;
+}
+
+/*
+ *  return true of the speaker may speak for the user
+ *
+ *  a speaker may always speak for himself/herself
+ */
+int
+speaksfor(char *speaker, char *user)
+{
+	Ndbtuple *tp, *ntp;
+	Ndbs s;
+	int ok;
+	char notuser[Maxpath];
+
+	if(strcmp(speaker, user) == 0)
+		return 1;
+
+	if(db == nil)
+		return 0;
+
+	tp = ndbsearch(db, &s, "hostid", speaker);
+	if(tp == nil)
+		return 0;
+
+	ok = 0;
+	snprint(notuser, sizeof notuser, "!%s", user);
+	for(ntp = tp; ntp != nil; ntp = ntp->entry)
+		if(strcmp(ntp->attr, "uid") == 0){
+			if(strcmp(ntp->val, notuser) == 0){
+				ok = 0;
+				break;
+			}
+			if(*ntp->val == '*' || strcmp(ntp->val, user) == 0)
+				ok = 1;
+		}
+	ndbfree(tp);
+	return ok;
+}
+
+static uchar empty[16];
+
+int
+readfile(char *file, char *buf, int n)
+{
+	int fd;
+
+	fd = open(file, OREAD);
+	if(fd < 0){
+		werrstr("%s: %r", file);
+		return -1;
+	}
+	n = read(fd, buf, n);
+	close(fd);
 	return n;
 }
 
-static void
-ticketrequnpack(Ticketreq *tr, uchar *p)
+int
+writefile(char *file, char *buf, int n)
 {
-	memset(tr, 0, sizeof tr[0]);
-	tr->which = *p++;
-	p += move(tr->authid, p, ANamelen);
-	p += move(tr->authdom, p, ADomlen);
-	p += move(tr->chal, p, Challen);
-	p += move(tr->hostid, p, ANamelen);
-	p += move(tr->uid, p, ANamelen);
+	int fd;
+
+	fd = open(file, OWRITE);
+	if(fd < 0)
+		return -1;
+	n = write(fd, buf, n);
+	close(fd);
+	return n;
 }
 
-static void
-ticketmk(Ticket *t, int which, uchar *chal, char *hostid, char *idr, uchar *key)
+char*
+finddeskey1(char *db, char *user, char *key)
 {
-	memset(t, 0, sizeof (Ticket));
-	t->which = which;
-	memmove(t->chal, chal, sizeof t->chal);
-	strcpy(t->cuid, hostid);
-	strcpy(t->suid, idr);
-	memmove(t->key, key, sizeof t->key);
+	char filename[Maxpath];
+
+	snprint(filename, sizeof filename, "%s/%s/key", db, user);
+	if(readfile(filename, key, DESKEYLEN) != DESKEYLEN)
+		return nil;
+	return key;
 }
 
-static void
-ticketpack(Ticket *t, uchar *buf)
+uchar*
+findaeskey1(char *db, char *user, uchar *key)
 {
-	uchar *p;
+	char filename[Maxpath];
 
-	p = buf;
-	*p++ = t->which;
-	p += move(p, t->chal, Challen);
-	p += move(p, t->cuid, ANamelen);
-	p += move(p, t->suid, ANamelen);
-	p += move(p, t->key, Deskeylen);
-}
-
-static void
-genkey(uchar *p)
-{
-	randombuf(p, Deskeylen);
-}
-
-static void
-clear(void *p, int n)
-{
-	memset(p, 0, n);
+	snprint(filename, sizeof filename, "%s/%s/aeskey", db, user);
+	if(readfile(filename, (char*)key, AESKEYLEN) != AESKEYLEN)
+		return nil;
+	return key;
 }
 
 int
-allowed(char *uid)
+findkey1(char *db, char *user, Authkey *key)
 {
-	char *path;
-	char buf[2*1024+1];
-	int fd;
+	int ret;
+
+	memset(key, 0, sizeof(Authkey));
+	ret = findaeskey1(db, user, key->aes) != nil;
+	if(ret && tsmemcmp(key->aes, empty, AESKEYLEN) != 0){
+		char filename[Maxpath];
+
+		snprint(filename, sizeof filename, "%s/%s/pakhash", db, user);
+		if(readfile(filename, (char*)key->pakhash, PAKHASHLEN) != PAKHASHLEN)
+			authpak_hash(key, user);
+	}
+	ret |= finddeskey1(db, user, key->des) != nil;
+	return ret;
+}
+
+char*
+findsecret(char *db, char *user, char *secret)
+{
 	int n;
-	char *p, *e;
+	char filename[Maxpath];
 
-	path = "/auth/badusers";
-	fd = open(path, O_RDONLY);
-	if(fd < 0) {
-		warn("open %s: %s", path, errstr);
-		return 0;
-	}
-	n = readn(fd, buf, sizeof buf-1);
-	if(n < 0) {
-		warn("read %s: %s", path, errstr);
-		return 0;
-	}
-	if(n == sizeof buf) {
-		warn("%s too long", path);
-		return 0;
-	}
-	buf[n] = '\0';
-	p = buf;
-	for(;;) {
-		e = strchr(p, '\n');
-		if(e == nil)
-			break;
-		*e = '\0';
-		if(strcmp(p, uid) == 0)
-			return 0;
-		p = e+1;
-	}
-	return 1;
+	snprint(filename, sizeof filename, "%s/%s/secret", db, user);
+	if((n = readfile(filename, secret, SECRETLEN-1)) <= 0)
+		return nil;
+	secret[n]=0;
+	return secret;
 }
 
-static void
-authtreq(Ticketreq *tr)
+char*
+setdeskey(char *db, char *user, char *key)
 {
-	char *authid, *authdom;
-	User au, u;
-	uchar ks[Deskeylen], kc[Deskeylen], kn[Deskeylen];
-	uint now;
-	char idr[ANamelen+1];
-	Ticket tc, ts;
-	uchar tcbuf[Ticketlen], tsbuf[Ticketlen];
-	uchar tresp[1+Ticketlen+Ticketlen];
-	int cok, sok;
-	char *msg;
+	char filename[Maxpath];
 
-	/* # C->A: AuthTreq, IDs, DN, CHs, IDc, IDr */
-
-	if(getinfo(&authid, &authdom) < 0) {
-		warn("could not get authid & authdom");
-		sysfatal("could not get authid & authdom");
-	}
-
-	now = time(nil);
-	getuserinfo(authid, &au);
-	say("authid, keyok %d, status %d, expire %u, now %u\n", au.keyok, au.status, au.expire, now);
-	genkey(ks);
-	sok = eq(tr->authid, authid) && eq(tr->authdom, authdom) && au.keyok && au.status && (au.expire == 0 || now > au.expire);
-
-	getuserinfo(tr->hostid, &u);
-	say("hostid '%s', user '%s', keyok %d, status %d, expire %u, now %u\n", tr->hostid, tr->uid, u.keyok, u.status, u.expire, now);
-	genkey(kc);
-	cok = u.keyok && u.status && (u.expire == 0 || u.expire > now);
-	if(sok && cok) {
-		memmove(ks, au.key, Deskeylen);
-		memmove(kc, u.key, Deskeylen);
-	}
-
-	/* A->C: AuthOK, Kc{AuthTc, CHs, IDc, IDr, Kn}, Ks{AuthTs, CHs, IDc, IDr, Kn} */
-	msg = "";
-	strcpy(idr, "");
-        if(eq(tr->hostid, tr->uid) || (eq(tr->hostid, authid) && allowed(tr->uid)))
-                strcpy(idr, tr->uid);
-	else
-		msg = ", but hostid does not speak for uid";
-	warn("ticketreq %s: authid %s, remote hostid %s, uid %s%s", (sok&&cok) ? "ok" : "bad", authid, tr->hostid, tr->uid, msg);
-
-        genkey(kn);
-	ticketmk(&tc, ATc, tr->chal, tr->hostid, idr, kn);
-	ticketpack(&tc, tcbuf);
-	authencrypt(kc, tcbuf, Ticketlen);
-	if(0)say("ticket, cipher %s", hex(tcbuf, Ticketlen));
-
-	ticketmk(&ts, ATs, tr->chal, tr->hostid, idr, kn);
-	ticketpack(&ts, tsbuf);
-	authencrypt(ks, tsbuf, Ticketlen);
-	if(0)say("ticket, cipher %s", hex(tsbuf, Ticketlen));
-
-	clear(kc, sizeof kc);
-	clear(ks, sizeof ks);
-	clear(kn, sizeof kn);
-	clear(&tc, sizeof tc);
-	clear(&ts, sizeof ts);
-	clear(&au, sizeof au);
-	clear(&u, sizeof u);
-
-        tresp[0] = AOk;
-	memmove(tresp+1, tcbuf, sizeof tcbuf);
-	memmove(tresp+1+sizeof tcbuf, tsbuf, sizeof tsbuf);
-	ewrite(tresp, sizeof tresp);
+	snprint(filename, sizeof filename, "%s/%s/key", db, user);
+	if(writefile(filename, key, DESKEYLEN) != DESKEYLEN)
+		return nil;
+	return key;
 }
 
-static void
-passwordrequnpack(Passreq *pr, uchar *buf)
+uchar*
+setaeskey(char *db, char *user, uchar *key)
 {
-	uchar *p;
+	char filename[Maxpath];
 
-	memset(pr, 0, sizeof pr[0]);
-	p = buf;
-	pr->which = *p++;
-	p += move(pr->oldpw, p, ANamelen);
-	p += move(pr->newpw, p, ANamelen);
-	pr->changesecret = *p++;
-	p += move(pr->secret, p, Secretlen);
+	snprint(filename, sizeof filename, "%s/%s/aeskey", db, user);
+	if(writefile(filename, (char*)key, AESKEYLEN) != AESKEYLEN)
+		return nil;
+	return key;
 }
 
-static char*
-checkpass(char *pw)
+int
+setkey1(char *db, char *user, Authkey *key)
 {
-	if(strlen(pw) < 8)
-		return "bad password: too short";
-	if(strlen(pw) > ANamelen)
-		return "bad password: too long";
-	return nil;
+	int ret;
+
+	ret = setdeskey(db, user, key->des) != nil;
+	if(tsmemcmp(key->aes, empty, AESKEYLEN) != 0)
+		ret |= setaeskey(db, user, key->aes) != nil;
+	return ret;
 }
 
-static void
-authpass(Ticketreq *tr)
+char*
+setsecret1(char *db, char *user, char *secret)
 {
-	User u;
-	uint now;
-	uchar kc[Deskeylen], kn[Deskeylen];
-	Ticket tp;
-	uchar tresp[1+Ticketlen];
-	uchar prbuf[Passreqlen];
-	Passreq pr;
-	uchar okey[Deskeylen], nkey[Deskeylen];
-	char *badpw;
-	char path[128];
-	int n;
+	char filename[Maxpath];
 
-	/*
-	 * C->A: AuthPass, IDc, DN, CHc, IDc, IDc
-	 * (request to change pass for tr->uid)
-	 */
-	getuserinfo(tr->uid, &u);
-
-	/* A->C: Kc{AuthTp, CHc, IDc, IDc, Kn} */
-	now = time(nil);
-	say("authpass for user %s, u.keyok %d, u.status %d, u.expire %u, now %u", tr->uid, u.keyok, u.status, u.expire, now);
-        genkey(kc);
-        if(u.keyok && u.status && (u.expire == 0 || now > u.expire))
-                memmove(kc, u.key, Deskeylen);
-	clear(&u, sizeof u);
-        genkey(kn);
-        ticketmk(&tp, ATp, tr->chal, tr->uid, tr->uid, kn);
-	tresp[0] = AOk;
-	ticketpack(&tp, tresp+1);
-	clear(&tp, sizeof tp);
-	authencrypt(kc, tresp+1, Ticketlen);
-        ewrite(tresp, sizeof tresp);
-
-	for(;;) {
-                /* C->A: Kn{AuthPass, old, new, changesecret, secret} */
-
-                n = readn(0, prbuf, sizeof prbuf);
-                if(n < 0)
-                        sysfatal("read passwordreq: %s", errstr);
-                if(n != sizeof prbuf)
-                        sysfatal("short read for password request, want %d, got %d", sizeof prbuf, n);
-		authdecrypt(kn, prbuf, sizeof prbuf);
-                passwordrequnpack(&pr, prbuf);
-		clear(prbuf, sizeof prbuf);
-
-                if(pr.which != APass) {
-			warn("pass change: for uid %s: wrong message type, want %d, saw %d (wrong password used)", tr->uid, APass, pr.which);
-			clear(&pr, sizeof pr);
-			clear(kc, sizeof kc);
-                        autherror(1, "wrong message type for Passreq");
-		}
-
-                if(pr.changesecret) {
-			warn("pass change: uid %s tried to change apop secret, not supported", tr->uid);
-                        autherror(0, "changing apop secret not supported");
-			clear(&pr, sizeof pr);
-                        continue;
-                }
-
-		passtokey(okey, pr.oldpw);
-		passtokey(nkey, pr.newpw);
-                if(!memeq(kc, okey, sizeof okey)) {
-			clear(&pr, sizeof pr);
-			clear(okey, sizeof okey);
-			clear(nkey, sizeof nkey);
-			warn("pass change: uid %s gave bad old password", tr->uid);
-                        autherror(0, "bad old password");
-                        continue;
-                }
-
-                badpw = checkpass(pr.newpw);
-                if(badpw != nil) {
-			clear(&pr, sizeof pr);
-			clear(okey, sizeof okey);
-			clear(nkey, sizeof nkey);
-			warn("pass change: uid %s gave bad new password: %s", tr->uid, badpw);
-                        autherror(0, badpw);
-                        continue;
-                }
-
-                snprintf(path, sizeof path, "/auth/users/%s/key", tr->uid);
-                if(writefile(path, nkey, Deskeylen) < 0) {
-			clear(&pr, sizeof pr);
-			clear(okey, sizeof okey);
-			clear(nkey, sizeof nkey);
-			clear(kc, sizeof kc);
-                        warn("pass change: storing new key for user %s failed: %s", tr->uid, errstr);
-                        autherror(1, "storing new key failed");
-                }
-
-		clear(&pr, sizeof pr);
-		clear(okey, sizeof okey);
-		clear(nkey, sizeof nkey);
-		clear(kc, sizeof kc);
-		warn("pass change: password changed for user %s", tr->uid);
-
-                /* A->C: AuthOK or AuthErr, 64-byte error message */
-                tresp[0] = AOk;
-                ewrite(tresp, 1);
-		return;
-        }
-}
-
-static void
-transact(void)
-{
-	Ticketreq tr;
-	uchar trbuf[Ticketreqlen];
-	int n;
-
-	say("reading ticketrequest");
-
-	/* read ticket */
-	n = readn(0, trbuf, sizeof trbuf);
-	if(n < 0)
-		sysfatal("read ticketreq: %s", errstr);
-	if(n == 0)
-		exit(0);
-	if(n != sizeof trbuf)
-		sysfatal("read ticketreq, want %d, got %d", sizeof trbuf, n);
-
-        ticketrequnpack(&tr, trbuf);
-	say("have ticketreq, which %d, authid %s authdom %s, chal %s hostid %s uid %s", tr.which, tr.authid, tr.authdom, hex(tr.chal, Challen), tr.hostid, tr.uid);
-
-	switch(tr.which) {
-	case ATreq:
-		authtreq(&tr);
-		break;
-	case APass:
-		authpass(&tr);
-		break;
-	default:
-		autherror(1, "not supported");
-		break;
-	}
-
-}
-
-static void
-log(int level, char *fmt, va_list ap)
-{
-	char *p;
-
-	if(vasprintf(&p, fmt, ap) < 0)
-		return;
-	syslog(level, "%s (%s)", p, remoteaddr(0));
-	free(p);
-}
-
-static void
-sysfatal(char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	log(LOG_NOTICE, fmt, ap);
-	va_end(ap);
-	exit(1);
-}
-
-static void
-warn(char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	log(LOG_WARNING, fmt, ap);
-	va_end(ap);
-}
-
-static void
-say(char *fmt, ...)
-{
-	va_list ap;
-
-	if(!dflag)
-		return;
-
-	va_start(ap, fmt);
-	log(LOG_INFO, fmt, ap);
-	va_end(ap);
+	snprint(filename, sizeof filename, "%s/%s/secret", db, user);
+	if(writefile(filename, secret, strlen(secret)) != strlen(secret))
+		return nil;
+	return secret;
 }
