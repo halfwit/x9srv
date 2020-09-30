@@ -2,7 +2,7 @@
 
 TARG=\
     #authsrv\
-    cpu\
+    #cpu\
     exportfs\
     tlssrv\
     tlsclient
@@ -46,7 +46,7 @@ clean:V:
 $O.authsrv: authsrv.$O $LIBMP $LIBSEC $LIBAUTHSRV
     $LD -o $target $prereq
 
-$O.cpu: cpu.$O $LIBC9
+$O.cpu: cpu.$O $LIBC9 $LIBMP $LIBSEC
     $LD -o $target $prereq
 
 $O.exportfs: exportfs.$O $LIBC9

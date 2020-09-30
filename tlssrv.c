@@ -123,7 +123,7 @@ threadmain(int argc, char *argv[])
 	if(fd > 1)
 		close(fd);
 
-	/* We want to fork here, and filter I/O; designing the bind mounts as needed */
+	/* TODO: We want to fork here, and filter I/O; designing the bind mounts as needed */
 	exec(*argv, argv);
 	reporter("can't exec %s: %r", *argv);
 	threadexitsall("exec");

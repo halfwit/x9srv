@@ -10,7 +10,7 @@ typedef struct	OChapreply	OChapreply;
 typedef struct	OMSchapreply	OMSchapreply;
 
 typedef struct	Authkey		Authkey;
-
+typedef unsigned char uchar; 
 enum
 {
 	ANAMELEN=	28,	/* name max size in previous proto */
