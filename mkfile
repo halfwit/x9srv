@@ -1,34 +1,55 @@
 <$PLAN9/src/mkhdr
 
 TARG=\
-    x9srv\
-    x9tlssrv
+    #authsrv\
+    cpu\
+    exportfs\
+    tlssrv
 
-LIBDRAW=libdraw/libdraw.$O.a
+LIBMP=libmp/libmp.$O.a
+LIBAUTHSRV=libauthsrv/libauthsrv.$O.a
+LIBSEC=libsec/libsec.$O.a
 LIBC9=libc9/libc9.$O.a
-LIB=$LIBDRAW $LIBC9
 
-HFLAGS=\
-    libdraw/x9draw.h\
-    libc9/x9fs.h
+HFILES=\
+    include/c9.h\
+    include/authsrv.h\
+    include/libsec.h\
+    include/mp.h\
 
 <$PLAN9/src/mkmany
-
-$LIBDRAW:V:
-    cd libdraw
-    mk
 
 $LIBC9:V:
     cd libc9
     mk
 
+$LIBAUTHSRV:V: $LIBMP
+    cd libauthsrv
+    mk
+
+$LIBMP:V:
+    cd libmp
+    mk
+
+$LIBSEC:V:
+    cd libsec
+    mk
+
 clean:V:
-    cd libdraw; mk clean; cd ..
+    cd libauthsrv; mk clean; cd ..
+    cd libmp; mk clean; cd ..
+    cd libsec; mk clean; cd ..
     cd libc9; mk clean; cd ..
 	rm -f *.[$OS] [$OS].out $TARG
 
-$O.x9srv: srv.$O $LIB
+$O.authsrv: authsrv.$O  $LIBSEC $LIBAUTHSRV
     $LD -o $target $prereq
 
-$O.x9tlssrv: tlssrv.$O $LIB
-    $LD -o $target $prereq 
+$O.cpu: cpu.$O $LIBC9
+    $LD -o $target $prereq
+
+$O.exportfs: exportfs.$O $LIBC9
+    $LD -o $target $prereq
+
+$O.tlssrv: tlssrv.$O $LIBMP $LIBSEC
+    $LD -o $target $prereq

@@ -6,8 +6,9 @@ OFILES=\
     c9.$O\
     x9fs.$O
 
+
 $O.*:V:
-    clang -std=c99 -fms-extensions -DC9_NO_CLIENT -O0 -g -Wall -Wextra -Wshadow -c *.c
+    clang -std=c99 -fms-extensions -DC9_NO_CLIENT -O0 -g -Wall -Wextra -Wshadow -c *.c -I../include
 
 $LIB: $O.*
 	ar -rv $LIB *.o

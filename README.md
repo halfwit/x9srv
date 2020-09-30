@@ -1,35 +1,51 @@
 # x9srv
 
-__*THIS IS A WORK IN PROGRESS *__
+* __*THIS IS A WORK IN PROGRESS *__
 
-x9srv emulates srv and tlssrv from 9front, on POSIX systems.
-The cputype will be set to $unix
+x9srv provides authsrv, tlssrv, cpu and exportfs, suitable for interacting with 9front
+
+* Currently, the binaries only act in server mode.
 
 ## Building
 
-Requires plan9port
+Requires plan9port - __* currently, exportfs is the only thing fully functional! *__
 
 ```/bin/rc
-mk && mk install
+mk all && mk install
 ```
+
+### authsrv
+
+Adapted from [mjl-/authsrv9](https://github.com/mjl-/authsrv9), with the addition of dp9ik support
+Consult [mjl-'s guide](https://www.ueber.net/who/mjl/plan9/plan9-obsd.html) for setup details.
 
 ## Usage
 
-`x9srv [-nd] [-k keypattern] [-x x9dev port] [dir]`
-`x9tlssrv[-nd] [-k keypattern] [-x x9dev port] [dir]`
+Add entries to your [inetd](https://www.freebsd.org/doc/handbook/network-inetd.html) as required, such as
 
-- `-n` reject all authentication attempts
-- `-x` if specified, listens for incoming devdraw commands from plan9port binaries/x9dev
-- `-k` if specified, select the key used for authentication
-- `[dir]` is an optional path to chroot all reads and writes in. By default, it uses $PLAN9. It will be consulted first for a file lookup.
+```conf
+# tlssrv for a cpu listener should be started from a listen1
+192.168.1.189:564   stream  tcp nowait  root    /usr/sbin/chroot chroot /path/to/chroot /bin/exportfs -r /
+192.168.1.189:567   stream  tcp nowait  root    /usr/sbin/chroot chroot /path/to/chroot /bin/auth/authsrv
+192.168.1.188:17010 stream  tcp nowait  root    /usr/sbin/chroot chroot /path/to/chroot /bin/cpu -R
+```
+
+Or you can use listen1 from plan9port
 
 ```/bin/rc
-# Using plan9port's listen
-listen1 -t 'tcp!*!564' x9srv /path/to/chroot
+# Serve your chroot on the network
+listen1 -t 'tcp!*!564' exportfs -r /
 
-# Use TLS + dp9ik
-listen1 -t 'tcp!*!17019' x9tlssrv /path/to/chroot
+# Start a normal cpu listener
+listen1 -t 'tcp!*!17010' cpu -R
 
-# With x9dev in your $PATH
-listen1 -t 'tcp!*!17019' x9tlssrv -x /path/to/chroot
+# Listen for incoming rcpu connections
+fn server {
+    . <{n=`{read} && ! ~ $#n 0 && read -c $n} >[2=1]
+}
+
+listen1 -t 'tcp!*!17019' tlssrv -a /bin/rc -c server
+
+# Start an authsrv listener
+listen1 -t 'tcp!*!567' authsrv
 ```
