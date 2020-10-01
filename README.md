@@ -53,7 +53,6 @@ listen1 -t 'tcp!*!567' authsrv
 
 fn server {
 	# WIP!
-	# Assuming X9SRV is set to where our binaries are
 	tmp=`{mktemp -d}
 	$PLAN9/bin/disk/mkfs -d $tmp /path/to/a/proto
 
