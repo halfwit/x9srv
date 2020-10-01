@@ -51,17 +51,16 @@ listen1 -t 'tcp!*!567' authsrv
 ```/bin/rc
 #!/bin/rc
 
-# WIP!
-# Assuming X9SRV is set to where our binaries are
-tmp=`{mktemp -d}
-unionfs $X9SRV=RO:$PLAN9=RO $tmp
-
 fn server {
-	. <{n=`{read} && ! ~ $#n 0 && read -c $n} >[2=]
+	# WIP!
+	# Assuming X9SRV is set to where our binaries are
+	tmp=`{mktemp -d}
+	$PLAN9/bin/disk/mkfs -d $tmp /path/to/a/proto
+
+	# Try to chroot and read commands from the remote connection
+	/usr/sbin/chroot $tmp /bin/rc <{n=`{read} && ! ~ $#n 0 && read -c $n} >[2=]
 }
 
-/usr/sbin/chroot $tmp /bin/sh << EOF
-listen1 -t -v 'tcp!*!17019' tlssrv -a /bin/rc -c server
-EOF
+listen1 -t 'tcp!*!17019' tlssrv -a /bin/rc -c server
 ```
 
