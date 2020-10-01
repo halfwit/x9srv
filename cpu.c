@@ -1,1 +1,0 @@
-/* This will have to be re-thought, as the implementation in 9front is fairly rubbish */
