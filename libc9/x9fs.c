@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <c9.h>
+#include "../include/c9.h"
 
 #define max(a,b) ((a)>(b)?(a):(b))
 #define used(x) ((void)(x))

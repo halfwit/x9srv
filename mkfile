@@ -2,6 +2,7 @@
 
 TARG=\
     authsrv\
+    #bind\
     #cpu\
     exportfs\
     tlssrv\
@@ -44,6 +45,9 @@ clean:V:
 	rm -f *.[$OS] [$OS].out $TARG
 
 $O.authsrv: authsrv.$O $LIBMP $LIBSEC $LIBAUTHSRV
+    $LD -o $target $prereq
+
+$O.bind: bind.$O
     $LD -o $target $prereq
 
 $O.cpu: cpu.$O $LIBC9 $LIBMP $LIBSEC

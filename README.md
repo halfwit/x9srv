@@ -2,7 +2,8 @@
 
 * __*THIS IS A WORK IN PROGRESS *__
 
-x9srv provides authsrv, tlssrv, cpu and exportfs, suitable for interacting with 9front
+x9srv provides authsrv, bind, tlssrv, cpu and exportfs, suitable for interacting with 9front
+
 libmp, libsec, libauthsrv are adapted from 9front and Aiju's code in [jsdrawterm](https://github.com/aiju/jsdrawterm)
 
 ## Building
@@ -39,22 +40,9 @@ See [tlssrv(8)](http://man.cat-v.org/9front/8/tlssrv)
 
 ## Usage
 
-* Currently, the binaries only act in server mode.
-
-Add entries to your [inetd](https://www.freebsd.org/doc/handbook/network-inetd.html) as required, such as
-
-```conf
-# tlssrv for a cpu listener should be started from a listen1
-192.168.1.189:564   stream  tcp nowait  root    /usr/sbin/chroot chroot /path/to/chroot /bin/exportfs -r /
-192.168.1.189:567   stream  tcp nowait  root    /usr/sbin/chroot chroot /path/to/chroot /bin/auth/authsrv
-192.168.1.188:17010 stream  tcp nowait  root    /usr/sbin/chroot chroot /path/to/chroot /bin/cpu -R
-```
-
-Or you can use listen1 from plan9port
-
 ```/bin/rc
 # Serve your chroot on the network
-listen1 -t 'tcp!*!564' exportfs -r /
+listen1 -t 'tcp!*!564' exportfs -r $tmp
 
 # Start a normal cpu listener
 listen1 -t 'tcp!*!17010' cpu -R
