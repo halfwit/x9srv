@@ -8,7 +8,7 @@ libmp, libsec, libauthsrv are adapted from 9front and Aiju's code in [jsdrawterm
 
 ## Building
 
-Requires plan9port - __* currently, exportfs is the only thing fully functional! *__
+Requires plan9port
 
 ```/bin/rc
 mk all && mk install
