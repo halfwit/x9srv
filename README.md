@@ -26,10 +26,6 @@ authsrv expects there to be at least the following files and directories in the 
 You can use `passtokey` from [authsrv9](https://github.com/mjl-/authsrv9) to generate keys, following the guide at https://www.ueber.net/who/mjl/plan9/plan9-obsd.html
 This is an incomplete version of authsrv, but should suffice for simple file shares and sessions.
 
-### cpu
-
-See [cpu(1)](http://man.cat-v.org/9front/1/cpu)
-
 ### exportfs
 
 See [exportfs(4)](http://man.cat-v.org/9front/4/exportfs)
@@ -41,19 +37,31 @@ See [tlssrv(8)](http://man.cat-v.org/9front/8/tlssrv)
 ## Usage
 
 ```/bin/rc
-# Serve your chroot on the network
-listen1 -t 'tcp!*!564' exportfs -r $tmp
+listen1 -t 'tcp!*!564' exportfs
 
 # Start a normal cpu listener
 listen1 -t 'tcp!*!17010' cpu -R
 
-# Listen for incoming rcpu connections
-fn server {
-    . <{n=`{read} && ! ~ $#n 0 && read -c $n} >[2=1]
-}
-
-listen1 -t 'tcp!*!17019' tlssrv -a /bin/rc -c server
-
 # Start an authsrv listener
 listen1 -t 'tcp!*!567' authsrv
 ```
+
+### rcpu listener setup - probably broken
+
+```/bin/rc
+#!/bin/rc
+
+# WIP!
+# Assuming X9SRV is set to where our binaries are
+tmp=`{mktemp -d}
+unionfs $X9SRV=RO:$PLAN9=RO $tmp
+
+fn server {
+	. <{n=`{read} && ! ~ $#n 0 && read -c $n} >[2=]
+}
+
+/usr/sbin/chroot $tmp /bin/sh << EOF
+listen1 -t -v 'tcp!*!17019' tlssrv -a /bin/rc -c server
+EOF
+```
+
