@@ -1,0 +1,16 @@
+#!/usr/bin/env rc
+
+
+fn server {
+	# WIP!
+	tmp=`{mktemp -d}
+	echo $tmp
+
+	# This file doesn't exist, it'll haev to be provided
+	#$PLAN9/bin/disk/mkfs -d $tmp $PLAN9/lib/cpuproto
+
+	# Try to chroot and read commands from the remote connection
+	/usr/sbin/chroot $tmp /bin/rc <{n=`{read} && ! ~ $#n 0 && read -c $n} >[2=1]
+}
+
+listen1 -v -t tcp!*!17019 tlssrv /bin/rc -c server

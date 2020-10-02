@@ -1,12 +1,13 @@
 #include <u.h>
 #include <libc.h>
+#include <thread.h>
 #include "include/c9.h"
 
 void
-main(int argc, char *argv[])
+threadmain(int argc, char *argv[])
 {
-    char *chroot;
-    
-    chroot = getenv("PLAN9");
-    fs_main(chroot);
+    /* TODO: handle all the flags and switches of a normal exportfs */
+    fs_main("/");
+
+    threadexitsall(0);
 }

@@ -8,6 +8,8 @@ libmp, libsec, libauthsrv are adapted from 9front and Aiju's code in [jsdrawterm
 
 libc9 is from sigrid's [c9](https://sr.ht/~ft/c9)
 
+libexportfs is a statically linked lib pulled from 9front's drawterm. It was linked against amd64
+
 ## Building
 
 Requires plan9port
