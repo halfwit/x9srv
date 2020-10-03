@@ -8,7 +8,7 @@
 #include "include/authsrv.h"
 
 #define AUTHLOG "auth"
-#define KEYDB   "/adm"
+char *KEYDB = "/adm";
 
 enum {
 	Maxpath = 256,
@@ -52,6 +52,13 @@ int	writefile(char*, char*, int);
 int		speaksfor(char*, char*);
 
 void
+usage(void)
+{
+	fprint(2, "usage: authsrv [-c chroot]\n");
+	threadexitsall("usage");
+}
+
+void
 threadmain(int argc, char *argv[])
 {
 	char buf[TICKREQLEN];
@@ -63,6 +70,14 @@ threadmain(int argc, char *argv[])
 	db = ndbopen("/lib/ndb/auth");
 	if(db == 0)
 		syslog(0, AUTHLOG, "no /lib/ndb/auth");
+
+	ARGBEGIN{
+	case 'c':
+		KEYDB = EARGF(usage());
+		break;
+	default:
+		usage();	
+	}ARGEND
 
 	for(;;){
 		n = readn(0, buf, sizeof(buf));

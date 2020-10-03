@@ -1,10 +1,13 @@
 #!/usr/bin/env rc
 # requires unionfs-fuse
 
+chroot=()
+
 fn server {
+	echo hereeeeee
 	# WIP!
 	tmp=`{mktemp -d}
-	unionfs $chroot=RO $tmp
+	unionfs $chroot'='RO $tmp
 
 	# This proto file doesn't exist, it'll have to be provided
 	# plan9port's mkfs creates a kfs normally, which we don't need for this
@@ -14,7 +17,8 @@ fn server {
 	# Try to chroot and read commands from the remote connection
 	/usr/sbin/chroot $tmp /bin/rc <{n=`{read} && ! ~ $#n 0 && read -c $n} >[2=1]
 
-	rm -rf $tmp
+	# Clean up
+	fusermount $tmp
 }
 
 chroot=`{mktemp -d}
@@ -22,6 +26,7 @@ chroot=`{mktemp -d}
 # Drop in our initial files
 mkdir $chroot/bin
 cp -r $PLAN9/bin $chroot/bin 
-cp -r $X9srv/bin/* $chroot/bin/
+cp -r /usr/local/x9srv/bin/* $chroot/bin/
 
-listen1 -v -t tcp!*!17019 tlssrv /bin/rc -c server
+# Listen with the user we start with
+listen1 -v -t tcp!*!17019 tlssrv -A /bin/rc -c server
