@@ -222,7 +222,11 @@ stat2qid(struct stat *st, C9qid *qid, uint32_t *iounit)
 	int fmt;
 
 	qid->path = st->st_ino;
-	qid->version = crc32(&st->st_ctimespec, sizeof(st->st_ctime));
+#ifdef __APPLE__
+	qid->version = crc32(&st->st_ctimespec, sizeof(st->st_ctimespec));
+#else
+	qid->version = crc32(&st->st_ctim, sizeof(st->st_ctim));
+#endif
 	qid->type = C9qtfile;
 	fmt = st->st_mode & S_IFMT;
 	if (fmt == S_IFDIR)
@@ -518,9 +522,13 @@ stat2c9stat(char *name, struct stat *st, C9stat *stout, char **err)
 	stout->size = st->st_size;
 	stat2qid(st, &stout->qid, NULL);
 	stout->name = name;
+#ifdef __APPLE__
 	stout->atime = st->st_atime;
 	stout->mtime = st->st_ctime;
-
+#else
+	stout->atime = st->st_atim.tv_sec;
+	stout->mtime = st->st_ctim.tv_sec;
+#endif
 	fmt = st->st_mode & S_IFMT;
 	if (fmt == S_IFDIR)
 		stout->mode |= C9stdir;
