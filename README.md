@@ -4,6 +4,9 @@
 
 x9srv provides authsrv, bind, tlssrv, cpu and exportfs, suitable for interacting with 9front
 
+ - There is a working tlsclient available for Unix-like systems available at 
+https://git.sr.ht/~moody/tlsclient 
+
 libmp, libsec, libauthsrv are adapted from 9front and Aiju's code in [jsdrawterm](https://github.com/aiju/jsdrawterm)
 
 libc9 is from sigrid's [c9](https://sr.ht/~ft/c9)
